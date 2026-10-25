@@ -41,13 +41,14 @@ class Shelf(Screen):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="shelf-header"):
-            yield Static("書櫃 · dbb-reader", id="shelf-title")
+            yield Static(Text.assemble(("書櫃", "bold"), ("  dbb-reader", "dim")), id="shelf-title")
             yield Button("設定 F2", id="shelf-settings")
         yield Static("", id="shelf-path")
-        yield Label("搜尋目前資料夾：書名、作者或資料夾名稱（不含子資料夾）", id="search-label")
-        yield Input(placeholder="按 / 搜尋；Enter 回到清單", id="search")
+        with Horizontal(id="shelf-search"):
+            yield Static("/", id="search-label")
+            yield Input(placeholder="搜尋此資料夾 · 書名／作者", id="search", compact=True)
         yield Static("讀取中…", id="shelf-status")
-        yield ShelfTable(id="books", cursor_type="row", zebra_stripes=True)
+        yield ShelfTable(id="books", cursor_type="row", cursor_foreground_priority="renderable")
         yield Static("", id="shelf-help")
 
     def on_mount(self):
@@ -104,26 +105,39 @@ class Shelf(Screen):
         # Explicit widths reserve progress and type. Long CJK titles are truncated, never
         # allowed to push these columns into a horizontal scrolling region.
         table.clear(columns=True)
-        width = max(24, self.size.width)
-        type_width = 10 if width >= 50 else 4
+        self.set_class(self.size.height < 24, "compact")
+        self.set_class(self.size.width < 60, "narrow")
+        self.roomy_rows = self.size.height >= 24
+        gutter = 1 if self.size.width < 60 else 2
+        # Reserve both screen gutters, cell padding, and a scrollbar, including
+        # the first frame after a terminal resize before CSS has reflowed.
+        width = max(24, self.size.width - 2 * gutter)
+        type_width = 10 if width >= 60 else 4
         name_width = max(1, width - type_width - 7 - 8)
-        table.add_column("名稱／作者", width=name_width)
+        table.add_column("書名／作者" if self.roomy_rows else "名稱", width=name_width)
         table.add_column("進度", width=7)
         table.add_column("類型", width=type_width)
         keys = []
         if self.current_directory != self.root:
-            table.add_row(Text("← .. 上層資料夾"), "", "", key="__parent__")
+            table.add_row(Text("← .. 上層資料夾", style="dim"), "", "", key="__parent__",
+                          height=2 if self.roomy_rows else 1)
             keys.append("__parent__")
         for entry in self.filtered_entries:
             position = self.reader.state.get(entry.path)
-            name = ("▸ " if entry.is_directory else "") + entry.title
-            if entry.author:
-                name += " · " + entry.author
-            kind = "資料夾" if entry.is_directory else ("損壞" if entry.error else
-                    ("EPUB" if entry.supported else ("PDF 不支援" if width >= 50 else "PDF")))
-            progress = f"{position.progress:.1%}" if entry.supported else "—"
+            name = Text(("▸ " if entry.is_directory else "") + entry.title,
+                        style="bold", no_wrap=True, overflow="ellipsis")
+            if self.roomy_rows:
+                name.append("\n")
+                if entry.author:
+                    name.append("  " + entry.author, style="not bold dim")
+            elif entry.author:
+                name.append("  · " + entry.author, style="not bold dim")
+            kind = "" if entry.is_directory else ("損壞" if entry.error else
+                    ("EPUB" if entry.supported else ("PDF 不支援" if type_width >= 10 else "PDF")))
+            progress = f"{position.progress:.1%}" if entry.supported else ""
             key = str(entry.path)
-            table.add_row(Text(name, no_wrap=True, overflow="ellipsis"), progress, kind, key=key)
+            row_height = (2 if entry.is_directory else (3 if self.size.height >= 28 else 2)) if self.roomy_rows else 1
+            table.add_row(name, progress, Text(kind, style="dim"), key=key, height=row_height)
             keys.append(key)
         default_index = 1 if self.current_directory != self.root and self.filtered_entries else 0
         if selected in keys:
@@ -134,18 +148,24 @@ class Shelf(Screen):
             if self.filtered_entries:
                 self.preferred_key = None
         relative = self.current_directory.relative_to(self.root)
-        breadcrumb = self.root.name + (" / " + " / ".join(relative.parts) if relative.parts else "（書庫根目錄）")
-        self.query_one("#shelf-path", Static).update(Text("目前：" + breadcrumb, no_wrap=True, overflow="ellipsis"))
+        breadcrumb = Text(self.root.name, style="dim", no_wrap=True, overflow="ellipsis")
+        if relative.parts:
+            for index, part in enumerate(relative.parts):
+                breadcrumb.append(" / ", style="dim")
+                breadcrumb.append(part, style="bold" if index == len(relative.parts) - 1 else "dim")
+        else:
+            breadcrumb.append(" /", style="bold")
+        self.query_one("#shelf-path", Static).update(breadcrumb)
         folder_count = sum(entry.is_directory for entry in self.filtered_entries)
         book_count = len(self.filtered_entries) - folder_count
         message = self.error or ("讀取中… " if self.scanning else "") + f"{folder_count} 個資料夾 · {book_count} 本書"
         if query:
-            message += " · 僅搜尋目前資料夾"
+            message += " · 此資料夾的搜尋結果"
         elif not self.entries and not self.scanning and not self.error:
             message += " · 此資料夾是空的"
         if self.recent_first:
-            message += " · 書籍依最近閱讀排序"
-        self.query_one("#shelf-status", Static).update(Text(message))
+            message += " · 最近閱讀"
+        self.query_one("#shelf-status", Static).update(Text(message, no_wrap=True, overflow="ellipsis"))
         self.update_help()
 
     def on_resize(self):
@@ -156,15 +176,31 @@ class Shelf(Screen):
         if hasattr(self, "entries"):
             self.update_help()
 
+    @on(DataTable.RowHighlighted, "#books")
+    def selection_changed(self):
+        if hasattr(self, "entries"):
+            self.update_help()
+
     def update_help(self):
+        compact = self.size.width < 80
+        panic = self.reader.config.panic_key.upper().replace("CTRL", "Ctrl")
         if self.app.focused is self.query_one("#search", Input):
-            help_text = "←→ 游標 · Backspace 刪字 · Enter 回清單 · Esc 清除／上層"
+            first = "Enter 回清單  Esc 清除／上層"
+            second = f"←→ 游標  {panic} 離開" if compact else f"僅搜尋此資料夾（不含子資料夾）  ·  ←→ 游標  Backspace 刪字  ·  {panic} 離開"
         else:
-            help_text = "↑↓ 選擇 · → 進資料夾 · Enter 開啟 · ← / Backspace 上層 · / 搜尋"
-        panic = self.reader.config.panic_key.replace("ctrl+", "Ctrl+")
-        exit_hint = panic if isinstance(self.app.focused, Input) else f"q / {panic}"
-        help_text += f"\nEsc 清除搜尋再回上層 · r 最近閱讀 · F5 重新整理 · F2 設定 · {exit_hint} 離開"
-        self.query_one("#shelf-help", Static).update(Text(help_text))
+            entry = next((entry for entry in self.entries if str(entry.path) == self.selected_key()), None)
+            if entry is not None and not entry.is_directory:
+                open_hint = "Enter 閱讀" if entry.supported else "PDF 不支援"
+                first = f"↑↓ 選擇  {open_hint}"
+            else:
+                first = "↑↓ 選擇  → 資料夾  Enter 開啟"
+            second = f"← 上層  / 搜尋  q/{panic} 離開"
+            if not compact:
+                first += "  ·  ← / Backspace 上層  ·  / 搜尋"
+                second = f"Esc 清除／上層  ·  r 最近閱讀  ·  F5 重新整理  ·  q / {panic} 離開"
+        help_text = Text(first + "\n")
+        help_text.append(second, style="dim")
+        self.query_one("#shelf-help", Static).update(help_text)
 
     @on(Input.Changed, "#search")
     def filter_changed(self):
@@ -283,8 +319,8 @@ class Loading(Screen):
     BINDINGS = [("escape", "cancel", "取消開啟")]
 
     def compose(self):
-        yield Static("Opening EPUB…", classes="heading")
-        yield Static("Building full-book text progress. The panic key remains active.", id="load-status")
+        yield Static("開啟 EPUB…", classes="heading")
+        yield Static(f"計算全書閱讀進度中，{self.app.config.panic_key.upper().replace('CTRL', 'Ctrl')} 隨時離開。", id="load-status")
         yield Footer()
 
     def action_cancel(self):
@@ -391,7 +427,7 @@ class Reading(Screen):
         cells = min(24, max(4, self.size.width // 5))
         filled = round(progress * cells)
         self.query_one("#progress", Static).update(Text(
-            f"{'━' * filled}{'─' * (cells - filled)} {progress:.1%} · Chapter {self.chapter + 1}/{len(self.book.chapters)} · {self.app.config.mode} · {self.app.config.panic_key} exit"))
+            f"{'━' * filled}{'─' * (cells - filled)} {progress:.1%} · 第 {self.chapter + 1}/{len(self.book.chapters)} 章 · {'分頁' if self.app.config.mode == 'page' else '捲動'} · {self.app.config.panic_key.upper().replace('CTRL', 'Ctrl')} 離開"))
 
     def goto(self, chapter, offset):
         self.chapter, self.text_offset = self.book.clamp(chapter, offset)
@@ -459,13 +495,24 @@ class ReaderApp(App):
     CSS = """
     Screen { layout: vertical; }
     .heading { height: 2; text-style: bold; padding: 0 1; }
-    #shelf-header { height: 3; }
-    #shelf-title { width: 1fr; padding: 1 1; text-style: bold; }
-    #shelf-settings { width: 18; min-width: 16; }
-    #shelf-path, #shelf-status { height: 1; padding: 0 1; }
-    #search-label { height: auto; padding: 0 1; }
-    #shelf-help { height: auto; padding: 0 1; color: $text-muted; }
-    #books { overflow-x: hidden; }
+    Shelf { padding: 0 2; }
+    Shelf.narrow { padding: 0 1; }
+    #shelf-header { height: 1; }
+    #shelf-title { width: 1fr; padding: 0 1; }
+    #shelf-settings { width: 10; min-width: 10; height: 1; border: none; padding: 0; background: transparent; color: $text-muted; }
+    #shelf-settings:focus { color: $text; background: $primary 20%; text-style: bold; }
+    #shelf-path { height: 1; padding: 0 1; margin-bottom: 1; }
+    #shelf-search { height: 1; padding: 0 1; }
+    #search-label { width: 2; height: 1; color: $text-muted; }
+    #search { width: 1fr; height: 1; border: none; padding: 0; background: transparent; }
+    #search:focus { background: $primary 10%; }
+    #shelf-status { height: 1; padding: 0 1; color: $text-muted; }
+    #shelf-help { height: 2; margin-top: 1; padding: 0 1; }
+    Shelf.compact #shelf-path { margin-bottom: 0; }
+    Shelf.compact #shelf-help { margin-top: 0; }
+    #books { overflow-x: hidden; background: transparent; }
+    #books > .datatable--header { background: $surface; color: $text-muted; text-style: none; }
+    #books > .datatable--cursor { background: $primary 20%; color: $text; text-style: none; }
     #books, #toc { height: 1fr; }
     #settings-fields { padding: 0 2; height: 1fr; }
     #settings-fields Label { margin-top: 1; }
@@ -570,7 +617,7 @@ class ReaderApp(App):
         def report(value):
             if loading.is_mounted:
                 loading.query_one("#load-status", Static).update(
-                    f"Reading spine {value[0]}/{value[1]}… · {self.config.panic_key} exits immediately")
+                    f"載入章節 {value[0]}/{value[1]}… · {self.config.panic_key.upper().replace('CTRL', 'Ctrl')} 隨時離開")
         self.background("load", lambda cancel, progress: load_book(entry.path, cancel,
                         lambda count, total: progress((count, total))), finished, report)
 

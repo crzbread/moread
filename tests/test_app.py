@@ -387,3 +387,71 @@ def test_footer_descriptions_are_traditional_chinese():
         for binding in screen.BINDINGS:
             description = binding.description if isinstance(binding, Binding) else binding[2]
             assert any('\u4e00' <= char <= '\u9fff' for char in description), description
+
+
+@pytest.mark.parametrize("size,book_height,folder_height", [((40, 18), 1, 1), ((74, 24), 2, 2), ((80, 24), 2, 2),
+                                                          ((100, 30), 3, 2)])
+async def test_adaptive_shelf_spacing_preserves_rows_progress_and_metadata(make_epub, tmp_path, size, book_height, folder_height):
+    path = make_epub()
+    (tmp_path / "分類").mkdir()
+    for i in range(12):
+        make_epub(f"book-{i:02}.epub")
+    app = make_app(tmp_path)
+    app.state.save(path, 0, 20, .375)
+    async with app.run_test(size=size) as pilot:
+        await ready(app, pilot)
+        shelf = app.screen
+        table = shelf.query_one(DataTable)
+        assert table.virtual_size.width <= table.content_size.width
+        assert table.region.x >= (1 if size[0] < 60 else 2)
+        assert table.get_row_height(str(tmp_path / "分類")) == folder_height
+        assert table.get_row_height(str(path)) == book_height
+        name = table.get_cell(str(path), list(table.columns)[0])
+        assert name.plain.startswith("真正書名") and "作者" in name.plain
+        assert name.get_style_at_offset(app.console, 0).bold
+        author_style = name.get_style_at_offset(app.console, name.plain.index("作者"))
+        assert author_style.dim and not author_style.bold
+        assert table.get_cell(str(path), list(table.columns)[1]) == "37.5%"
+        available = table.content_size.height - table.header_height
+        assert available >= (10 if size[1] == 18 else 15)
+        from wcwidth import wcswidth
+        help_widget = shelf.query_one("#shelf-help", Static)
+        assert all(wcswidth(line) <= help_widget.content_size.width
+                   for line in help_widget.content.plain.splitlines())
+        await pilot.press("/")
+        assert all(wcswidth(line) <= help_widget.content_size.width
+                   for line in help_widget.content.plain.splitlines())
+        await pilot.press("enter")
+        if book_height > 1:
+            assert name.plain.splitlines()[1].strip() == "作者"
+        # Every entry is reachable with arrows even in the minimum-height viewport.
+        await pilot.press(*(["down"] * table.row_count))
+        assert table.cursor_row == table.row_count - 1 and table.scroll_y > 0
+        assert "→ 不開書" not in str(shelf.query_one("#shelf-help", Static).content)
+        await pilot.resize_terminal(40, 18)
+        await pilot.pause()
+        assert table.get_row_height(str(path)) == 1
+        assert table.virtual_size.width <= table.content_size.width
+        assert table.get_cell(str(path), list(table.columns)[1]) == "37.5%"
+
+
+async def test_existing_reading_and_loading_status_use_chinese_and_configured_panic(make_epub, tmp_path, monkeypatch):
+    make_epub()
+    app = make_app(tmp_path, panic_key="ctrl+x")
+    async with app.run_test() as pilot:
+        await ready(app, pilot)
+        await pilot.press("enter")
+        await until(pilot, lambda: isinstance(app.screen, Reading))
+        status = str(app.screen.query_one("#progress", Static).content)
+        assert "章" in status and "分頁" in status and "Ctrl+X" in status and "離開" in status
+        assert "Chapter" not in status and "exit" not in status and "page" not in status
+        await pilot.press("escape")
+        def slow(path, cancel, report):
+            cancel.wait(5)
+            raise Cancelled()
+        monkeypatch.setattr("dbb_reader.app.load_book", slow)
+        await pilot.press("enter")
+        await until(pilot, lambda: isinstance(app.screen, Loading))
+        status = str(app.screen.query_one("#load-status", Static).content)
+        assert "Ctrl+X" in status and "Ctrl+D" not in status and "離開" in status
+        await pilot.press("ctrl+x")
