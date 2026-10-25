@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbb-reader"
+version = "1.0.0"
+description = "A private, keyboard-driven terminal EPUB reader"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["textual>=6.0,<9", "defusedxml>=0.7.1", "regex>=2024.0", "wcwidth>=0.2.13", "platformdirs>=4.0"]
+
+[project.scripts]
+dbb-reader = "dbb_reader.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
