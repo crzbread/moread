@@ -31,14 +31,20 @@ class State:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             if data.get("version") != 1 or not isinstance(data.get("books"), dict):
                 raise ValueError("unsupported state format")
+            damaged = 0
             for key, value in data["books"].items():
-                p = Position(**value)
-                if (type(p.chapter) is not int or p.chapter < 0 or type(p.offset) is not int
-                        or p.offset < 0 or type(p.progress) not in (int, float)
-                        or not 0 <= p.progress <= 1 or not isinstance(p.updated, str)
-                        or not isinstance(p.href, str)):
-                    raise ValueError("invalid reading position")
-                self.positions[key] = p
+                try:
+                    p = Position(**value)
+                    if (type(p.chapter) is not int or p.chapter < 0 or type(p.offset) is not int
+                            or p.offset < 0 or type(p.progress) not in (int, float)
+                            or not 0 <= p.progress <= 1 or not isinstance(p.updated, str)
+                            or not isinstance(p.href, str)):
+                        raise ValueError("invalid reading position")
+                    self.positions[key] = p
+                except (ValueError, TypeError):
+                    damaged += 1
+            if damaged:
+                self.warning = f"已略過 {damaged} 筆損壞的閱讀紀錄，其餘紀錄仍可使用。"
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError, AttributeError) as exc:

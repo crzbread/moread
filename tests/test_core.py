@@ -91,3 +91,66 @@ def test_cancel_and_malformed(make_epub, tmp_path):
     state_path = tmp_path / "bad-state.json"
     state_path.write_text('{"version":1,"books":{"x":{"chapter":-1}}}')
     assert State(state_path).warning
+
+
+def test_default_library_is_installation_independent(monkeypatch, tmp_path):
+    from dbb_reader.config import DEFAULT_LIBRARY
+    monkeypatch.chdir(tmp_path)
+    assert Path(Config().library) == DEFAULT_LIBRARY == Path.home() / "Documents" / "Self" / "Books"
+
+
+def test_reject_backspace_panic_alias(tmp_path):
+    with pytest.raises(ValueError):
+        Config(panic_key="ctrl+h").validate()
+    path = tmp_path / "config.toml"
+    path.write_text('panic_key = "ctrl+h"')
+    assert load_config(path)[1]
+
+
+def test_damaged_state_retains_healthy_books(tmp_path):
+    import json
+    from dbb_reader.state import book_id
+    first, second = tmp_path / "one.epub", tmp_path / "two.epub"
+    path = tmp_path / "state.json"
+    state = State(path)
+    state.save(first, 3, 81, .42)
+    data = json.loads(path.read_text())
+    data["books"][book_id(second)] = {"offset": "broken"}
+    path.write_text(json.dumps(data))
+    restored = State(path)
+    assert restored.warning
+    assert restored.get(first).offset == 81
+    assert restored.get(second).offset == 0
+    restored.save(second, 0, 15, .01)
+    assert State(path).get(first).offset == 81
+
+
+def test_directory_scan_keeps_nested_and_empty_folders(make_epub, tmp_path):
+    from dbb_reader.library import scan_directory
+    book = make_epub()
+    folder = tmp_path / "中文分類"
+    nested = folder / "子資料夾"
+    nested.mkdir(parents=True)
+    (tmp_path / "empty").mkdir()
+    (folder / "指南.pdf").write_bytes(b"unsupported")
+    root_entries = scan_directory(tmp_path, tmp_path)
+    assert [e.is_directory for e in root_entries] == [True, True, False]
+    assert {e.path.name for e in root_entries} == {"中文分類", "empty", book.name}
+    assert {e.path.name for e in scan_directory(tmp_path, folder)} == {"子資料夾", "指南.pdf"}
+    assert scan_directory(tmp_path, nested) == []
+    with pytest.raises(ValueError):
+        scan_directory(tmp_path, tmp_path.parent)
+
+
+@pytest.mark.parametrize("title, query", [("閱讀", "阅读"), ("阅读", "閱讀"),
+                                         ("心理學", "心理学"), ("心理学", "心理學")])
+@pytest.mark.parametrize("field", ["title", "author"])
+def test_simplified_traditional_search_preserves_originals(tmp_path, title, query, field):
+    from dbb_reader.library import Entry
+    entry = Entry(tmp_path / "unchanged.epub", title if field == "title" else "Book",
+                  title if field == "author" else "Author", "")
+    before = vars(entry).copy()
+    assert filter_entries([entry], query) == [entry]
+    assert filter_entries([entry], title) == [entry]
+    assert not filter_entries([entry], "無關文字")
+    assert vars(entry) == before

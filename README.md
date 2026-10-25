@@ -1,9 +1,54 @@
 # dbb-reader
 
-A keyboard-driven terminal EPUB reader for a read-only local library. Python 3.11+.
+目前交付：**資料夾式終端書櫃**。直接瀏覽唯讀的 Books 目錄，保留真實資料夾階層、空資料夾與原始檔案。閱讀器已有實驗性基礎，暫停擴充，待書櫃介面確認後再繼續；此版本尚非完整 reader v1 驗收。
 
-Install with `uv sync` and launch with `uv run dbb-reader`. The library defaults to
-`../Books` relative to this repository. Set it in the settings UI or user TOML config.
-Books and personal reading data are never stored in this repository.
+需要 Python 3.11+ 與支援 UTF-8 的終端；建議至少 40 欄、18 列。
 
-Run the tests with `uv run pytest`.
+```sh
+uv sync
+uv run dbb-reader
+# 也可以指定其他書庫
+uv run dbb-reader --library /path/to/Books
+```
+
+不使用 uv 時，可在虛擬環境執行 `python -m pip install .`，再執行 `dbb-reader`。
+預設書庫為 `~/Documents/Self/Books`，與套件安裝位置、啟動目錄無關。可在介面設定或 TOML 中修改。
+
+書櫃從書庫根目錄開始，每次只顯示目前資料夾的直接子項目；資料夾在前，書籍在後。EPUB 優先顯示內含書名及作者；PDF 保留列出並標示不支援。長標題會截短，進度欄固定保留，不需水平捲動。符號連結不列入。
+
+| 操作 | 書櫃按鍵 |
+| --- | --- |
+| 選擇項目 | ↑ / ↓ |
+| 開啟資料夾或 EPUB | → 或 Enter |
+| 回上層 | ← 或 Backspace；子目錄也有 `.. 上層資料夾` 列 |
+| 搜尋目前資料夾 | `/`，或 Tab 移到搜尋框 |
+| 完成搜尋、回到清單 | Enter；再按 Enter 或 → 開啟選取項目 |
+| 清除搜尋，再回上層 | Esc：有查詢時先清除，沒有查詢時回上層；根目錄不再向外走 |
+| 最近閱讀／名稱排序 | `r`（只排序目前資料夾的書籍，資料夾始終在前） |
+| 重新整理目前資料夾 | F5 |
+| 設定 | F2，或 Tab 選取畫面上的「設定 F2」按鈕後 Enter；`s` 也可 |
+| 全域立即離開 | **Ctrl+D**；設定、搜尋、選單及載入期間都有效；Ctrl+C 亦可離開 |
+
+搜尋僅限目前資料夾，不含子資料夾，可依書名、作者或資料夾名稱篩選。使用官方 [OpenCC Python 套件](https://github.com/BYVoid/OpenCC#python) 將查詢與搜尋用文字正規化；例如「閱讀／阅读」、「心理學／心理学」雙向皆可找到。顯示文字與檔案維持原樣，這不是語意或同義詞搜尋。空白分隔的多個詞必須全部符合。
+
+搜尋與設定輸入框內，← / → 移動游標、Backspace 刪字，不會切換資料夾。F2 使用傳統終端按鍵序列；也可用 Tab 選取設定按鈕後按 Enter。滑鼠擷取關閉，可使用終端原生選取及複製；TUI 使用替代畫面，離開後還原 shell。程式不會把書名設成終端標題。
+
+設定與進度放在 platformdirs 的使用者目錄；macOS 預設為 `~/Library/Application Support/dbb-reader/` 下的 `config.toml`、`state.json`。設定畫面會顯示實際設定檔位置。可使用 `--config /path/settings.toml`、`--state /path/state.json` 隔離測試資料。TOML 範例：
+
+```toml
+library = "/absolute/path/to/Books"
+mode = "page"
+reading_width = 80
+theme = "textual-dark"
+panic_key = "ctrl+d"
+```
+
+佈景支援 `textual-dark`、`textual-light`、`nord`、`gruvbox`。離開鍵只接受 `ctrl+字母`，排除終端會解讀成 Backspace、Tab、Enter 的 h、i、j、m。無效設定以預設值啟動並顯示提示；個別損壞的進度紀錄會略過，其餘書籍紀錄保留。書籍、設定、進度、快取及環境檔不納入 Git。
+
+實驗性閱讀基礎：Enter 開啟 EPUB，← / → 翻頁，↑ / ↓ 一行移動（與模式無關），PageUp / PageDown 是額外翻頁捷徑。`n` / `p` 切換章節，`t` 開啟目錄，Esc / `b` 回書櫃。已有 CJK 排版、全書文字比例與每本書的章節／字元位置續讀。PDF、圖片、DRM、直排、複雜排版不支援；UTF-16 章節解碼與僅含片段的 TOC 連結修正，依目前範圍延後至閱讀器工作恢復。書籍改名或移動會建立新的續讀識別；多個同時執行的實例尚未合併進度寫入。
+
+驗證方式：`uv run pytest`，目前 **40 項通過**。測試涵蓋真實資料夾階層與空目錄、方向鍵與返回選取位置、搜尋範圍、輸入焦點、設定及全域離開、40–120 欄的進度可見性、繁簡搜尋、損壞狀態隔離，以及 POSIX PTY 的滑鼠／替代畫面／終端還原契約。原有 EPUB、排版、續讀及閱讀基礎測試保留。
+
+本機唯讀驗證：161 EPUB、16 PDF；根目錄實際顯示 5 個資料夾與 1 本書。先前閱讀基礎量測：1,415 spine 小說約 0.82 秒；130,362,816 bytes 合集約 0.64 秒（578 個線性項目；完整 spine 為 579）。未提交任何書籍或擷取文字。這些數字僅代表本機樣本，不是完整閱讀器驗收或效能保證。
+
+已於現有 Herdr 測試窗格驗證根目錄、Right/Left 進出資料夾、搜尋輸入焦點與 Ctrl+D 離開；離開後 shell 與原終端標題還原，書櫃畫面未留在一般畫面／捲動緩衝區。滑鼠未擷取的契約另由 PTY 測試確認；未進行人工剪貼簿拖曳驗收。

@@ -10,7 +10,7 @@ import tomllib
 from platformdirs import user_config_path, user_state_path
 
 
-DEFAULT_LIBRARY = Path(__file__).resolve().parents[3] / "Books"
+DEFAULT_LIBRARY = Path.home() / "Documents" / "Self" / "Books"
 
 
 def atomic_write(path: Path, content: str) -> None:
@@ -52,9 +52,9 @@ class Config:
             raise ValueError("Reading width must be an integer from 20 to 240.")
         if self.theme not in ("textual-dark", "textual-light", "nord", "gruvbox"):
             raise ValueError("Theme must be textual-dark, textual-light, nord or gruvbox.")
-        # Restrict to unambiguous terminal chords. Ctrl+I/M/J are Tab/Enter/newline.
-        if not isinstance(self.panic_key, str) or not re.fullmatch(r"ctrl\+[a-hkln-z]", self.panic_key):
-            raise ValueError("Panic key must be ctrl+letter (except i, j, m).")
+        # Restrict to unambiguous terminal chords. Ctrl+H/I/M/J are Backspace/Tab/Enter/newline.
+        if not isinstance(self.panic_key, str) or not re.fullmatch(r"ctrl\+[a-gkln-z]", self.panic_key):
+            raise ValueError("Panic key must be ctrl+letter (except h, i, j, m).")
         return self
 
 

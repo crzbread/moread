@@ -9,6 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="Read a local EPUB library in your terminal.")
     parser.add_argument("--library", type=Path, help="Override the configured library directory")
     parser.add_argument("--config", type=Path, help="Use an alternate TOML configuration")
+    parser.add_argument("--state", type=Path, help="Use an alternate reading-state JSON file")
     parser.add_argument("--list", action="store_true", help="List metadata without starting the TUI")
     args = parser.parse_args()
     config, warning = load_config(args.config)
@@ -26,7 +27,8 @@ def main():
     else:
         # Imported lazily so metadata tools work without initializing the TUI.
         from .app import ReaderApp
-        ReaderApp(config, config_file=args.config, warning=warning).run(mouse=False)
+        from .state import State
+        ReaderApp(config, config_file=args.config, state=State(args.state), warning=warning).run()
 
 
 if __name__ == "__main__":

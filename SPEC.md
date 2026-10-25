@@ -26,3 +26,30 @@ A personal Python terminal EPUB reader. The existing library is read-only:
 ## Ownership
 
 The implementation agent owns source changes and commits. The independent same-tier reviewer inspects requirements, code, tests and commits; reports actionable issues rather than modifying implementation concurrently. The coordinating agent manages scope, fixes and final acceptance. No publishing or remote push is requested.
+
+## User steering: bookshelf first
+
+The first TUI preview was not satisfactory. Pause further reader development and
+focus the current milestone on a filesystem-style bookshelf. Start at the Books
+root showing real folders and root-level books, enter a folder to see its children,
+and show the current path with a parent navigation row. Avoid a flat all-books
+table with category dropdown. Keyboard interactions should be obvious: Up/Down
+select, Enter/Right open, Left/Backspace go to parent, Escape clears search first
+then goes back, Ctrl+D exits globally. Show concise Traditional Chinese labels and
+contextual help; search and settings should have discoverable labels. Preserve
+existing reader work but do not expand it in this milestone. Validate the revised
+bookshelf and get user feedback before resuming reader work.
+
+Arrow-key clarification: shelf Up/Down selects, Right opens, Left returns to parent;
+Enter also opens. Reader Left/Right pages and Up/Down scrolls one line, independent
+of page mode; PageUp/PageDown are optional aliases, never required. Text inputs
+retain Left/Right cursor movement and Backspace deletion. Apply the small reader
+key mapping correction only; continue focusing development on the bookshelf.
+
+Search matches Simplified/Traditional Chinese equivalently for titles and authors
+by default, while preserving all displayed metadata and original book contents.
+Use a maintained conversion library rather than an ad-hoc character table. This
+is search normalization only, not reader text conversion or semantic synonyms.
+
+Settings shortcut decision: advertise F2, using traditional terminal key sequences.
+Keep Tab-to-settings-button as fallback; do not advertise Ctrl+,.
