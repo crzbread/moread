@@ -157,6 +157,7 @@ async def test_interactive_config_and_custom_panic(make_epub, tmp_path):
         app.screen.query_one("#save").focus()
         await pilot.press("enter")
         assert isinstance(app.screen, Settings)
+        await until(pilot, lambda: not app.screen.query_one("#save").has_class("-active"))
         app.screen.query_one("#width", Input).value = "42"
         app.screen.query_one("#mode", Select).value = "scroll"
         app.screen.query_one("#panic-key", Input).value = "ctrl+x"
@@ -443,7 +444,8 @@ async def test_existing_reading_and_loading_status_use_chinese_and_configured_pa
         await pilot.press("enter")
         await until(pilot, lambda: isinstance(app.screen, Reading))
         status = str(app.screen.query_one("#progress", Static).content)
-        assert "章" in status and "分頁" in status and "Ctrl+X" in status and "離開" in status
+        help_text = str(app.screen.query_one("#reading-help", Static).content)
+        assert "章" in status and "空白 翻一頁" in help_text and "Ctrl+X" in help_text and "離開" in help_text
         assert "Chapter" not in status and "exit" not in status and "page" not in status
         await pilot.press("escape")
         def slow(path, cancel, report):

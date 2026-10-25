@@ -265,7 +265,8 @@ class Shelf(Screen):
         self.reader.start_scan(self)
 
 class Settings(Screen):
-    BINDINGS = [("escape", "cancel", "取消")]
+    BINDINGS = [Binding("ctrl+s", "save", "儲存", priority=True),
+                Binding("escape", "cancel", "取消")]
 
     def compose(self) -> ComposeResult:
         config = self.app.config
@@ -273,8 +274,8 @@ class Settings(Screen):
         with VerticalScroll(id="settings-fields"):
             yield Label("書庫資料夾")
             yield Input(config.library, id="library")
-            yield Label("閱讀模式（實驗功能）")
-            yield Select([("分頁", "page"), ("捲動", "scroll")], value=config.mode, allow_blank=False, id="mode")
+            yield Label("空白鍵動作")
+            yield Select([("翻一頁", "page"), ("捲動一行", "scroll")], value=config.mode, allow_blank=False, id="mode")
             yield Label("閱讀寬度（20–240 終端格）")
             yield Input(str(config.reading_width), id="width", type="integer")
             yield Label("佈景主題")
@@ -283,14 +284,29 @@ class Settings(Screen):
             yield Label("全域離開鍵（ctrl+字母；h、i、j、m 除外）")
             yield Input(config.panic_key, id="panic-key")
             yield Static(Text(f"設定檔：{self.app.config_file}"))
-            yield Static("", id="settings-error")
-            with Horizontal(classes="buttons"):
-                yield Button("儲存", id="save", variant="primary")
-                yield Button("取消", id="cancel")
-        yield Footer()
+        yield Static("", id="settings-error")
+        with Horizontal(classes="buttons", id="settings-actions"):
+            yield Button("儲存", id="save", variant="primary")
+            yield Button("取消", id="cancel")
+        yield Static("Ctrl+S 儲存  Esc 取消\nTab 切欄位", id="settings-help")
+
+    def on_mount(self):
+        self.query_one("#library", Input).focus()
+        panic = self.app.config.panic_key.upper().replace("CTRL", "Ctrl")
+        if self.app.config.panic_key == "ctrl+s":
+            hints = "Tab 選儲存後 Enter  Esc 取消\nCtrl+S 急退（不儲存）"
+        else:
+            hints = f"Ctrl+S 儲存  Esc 取消\nTab 切欄位  {panic} 急退"
+        self.query_one("#settings-help", Static).update(Text(
+            hints))
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "save" and self.app.config.panic_key == "ctrl+s":
+            return False  # The app's priority panic binding always wins; the button still saves.
+        return super().check_action(action, parameters)
 
     @on(Button.Pressed, "#save")
-    def save(self):
+    def action_save(self):
         try:
             config = Config(
                 library=str(Path(self.query_one("#library", Input).value).expanduser().resolve()),
@@ -305,7 +321,9 @@ class Settings(Screen):
                 raise ValueError("找不到此資料夾，請檢查書庫路徑。")
             save_config(config, self.app.config_file)
         except (ValueError, OSError) as exc:
-            self.query_one("#settings-error", Static).update(Text(str(exc)))
+            error = self.query_one("#settings-error", Static)
+            error.display = True
+            error.update(Text(str(exc)))
             return
         self.app.apply_config(config)
         self.app.pop_screen()
@@ -362,13 +380,14 @@ class Contents(Screen):
 
 class Reading(Screen):
     BINDINGS = [
-        ("space,pagedown,right", "move(1, True)", "下一頁"),
+        ("space", "space", "空白鍵"),
+        ("pagedown,right", "move(1, True)", "下一頁"),
         ("pageup,left", "move(-1, True)", "上一頁"),
         ("down,j", "move(1, False)", "下一行"), ("up,k", "move(-1, False)", "上一行"),
         ("n", "chapter(1)", "下一章"), ("p", "chapter(-1)", "上一章"),
-        ("t", "toc", "目錄"), ("s", "settings", "設定"),
+        ("t", "toc", "目錄"), ("f2,s", "settings", "設定"),
         ("home", "start", "章節開頭"), ("end", "end", "章節結尾"),
-        ("escape,b", "back", "書櫃"),
+        ("escape,backspace,b", "back", "書櫃"),
     ]
 
     def __init__(self, entry: Entry, book: Book):
@@ -384,7 +403,7 @@ class Reading(Screen):
         with Vertical(id="reading-area"):
             yield Static("", id="text", markup=False)
         yield Static("", id="progress")
-        yield Footer()
+        yield Static("", id="reading-help")
 
     def on_mount(self):
         position = self.app.state.get(self.entry.path)
@@ -424,10 +443,22 @@ class Reading(Screen):
         self.query_one("#reading-heading", Static).update(Text(
             f"{self.book.title} · {self.book.chapters[self.chapter].title}"))
         progress = self.book.progress(self.chapter, self.text_offset)
-        cells = min(24, max(4, self.size.width // 5))
+        cells = min(20, max(4, self.size.width // 6))
         filled = round(progress * cells)
         self.query_one("#progress", Static).update(Text(
-            f"{'━' * filled}{'─' * (cells - filled)} {progress:.1%} · 第 {self.chapter + 1}/{len(self.book.chapters)} 章 · {'分頁' if self.app.config.mode == 'page' else '捲動'} · {self.app.config.panic_key.upper().replace('CTRL', 'Ctrl')} 離開"))
+            f"{'━' * filled}{'─' * (cells - filled)} {progress:.1%} · 第 {self.chapter + 1}/{len(self.book.chapters)} 章",
+            no_wrap=True, overflow="ellipsis"))
+        space_action = "翻一頁" if self.app.config.mode == "page" else "捲動一行"
+        panic = self.app.config.panic_key.upper().replace("CTRL", "Ctrl")
+        self.set_class(self.size.width < 70, "narrow")
+        if self.size.width < 70:
+            help_text = (f"Esc/⌫ 書櫃  F2 設定  t 目錄\n"
+                         f"←→ 翻頁  ↑↓ 一行  空白 {space_action}\n"
+                         f"q 離開  {panic} 急退")
+        else:
+            help_text = (f"Esc/⌫ 書櫃  F2 設定  t 目錄  q / {panic} 離開\n"
+                         f"←→ 翻頁  ↑↓ 一行  空白 {space_action}  ·  n/p 切章  Home/End 首尾")
+        self.query_one("#reading-help", Static).update(Text(help_text))
 
     def goto(self, chapter, offset):
         self.chapter, self.text_offset = self.book.clamp(chapter, offset)
@@ -463,6 +494,9 @@ class Reading(Screen):
                 self.chapter -= 1
                 lines = self.layout_lines()
                 self.goto(self.chapter, lines[max(0, len(lines) - step)].start)
+
+    def action_space(self):
+        self.action_move(1, self.app.config.mode == "page")
 
     def action_chapter(self, direction):
         self.goto(self.chapter + direction, 0)
@@ -516,12 +550,16 @@ class ReaderApp(App):
     #books, #toc { height: 1fr; }
     #settings-fields { padding: 0 2; height: 1fr; }
     #settings-fields Label { margin-top: 1; }
-    #settings-error { color: $error; height: auto; }
+    #settings-error { color: $error; height: auto; max-height: 3; margin: 0 2; display: none; }
+    #settings-actions { margin: 0 2; }
+    #settings-help { height: 2; padding: 0 2; }
     .buttons { height: 3; margin-top: 1; }
     .buttons Button { margin-right: 2; }
     #reading-area { height: 1fr; align-horizontal: center; overflow: hidden; }
     #text { height: auto; }
     #progress { height: 1; }
+    #reading-help { height: 2; padding: 0 1; }
+    Reading.narrow #reading-help { height: 3; }
     """
 
     def __init__(self, config: Config | None = None, *, config_file: Path | None = None,

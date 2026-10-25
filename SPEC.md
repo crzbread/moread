@@ -74,3 +74,19 @@ Additional controls: q exits the application outside editable inputs. In search
 and settings text inputs q remains ordinary text; Ctrl+D remains global panic.
 Translate bottom help/footer descriptions throughout existing screens to
 Traditional Chinese, including reading and loading, without expanding features.
+
+## Reader return and settings repair
+
+Keep q as application exit outside editable inputs. Esc, Backspace and b return
+from reading to the bookshelf; compact Chinese reader help must keep return,
+F2 settings and panic discoverable at 40x18 and 80x24. F2 and s open the same
+settings screen from reading. Keep Save/Cancel and errors outside scrolling
+fields, focus a sensible input immediately, support Ctrl+S save and Esc cancel,
+and preserve logical position while applying width/theme changes.
+
+Retain the TOML mode key for compatibility, but label it 空白鍵動作 in settings:
+page = 翻一頁, scroll = 捲動一行. Mode affects Space only. Left/Right continue
+paging and Up/Down continue moving one line in both modes.
+
+If panic_key is ctrl+s, panic retains priority. Suppress the settings save shortcut
+and its hint; advertise Tab to the Save button followed by Enter instead.

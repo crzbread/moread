@@ -37,7 +37,7 @@ uv run dbb-reader --library /path/to/Books
 
 搜尋與設定輸入框內，← / → 移動游標、Backspace 刪字，不會切換資料夾。F2 使用傳統終端按鍵序列；也可用 Tab 選取設定按鈕後按 Enter。滑鼠擷取關閉，可使用終端原生選取及複製；TUI 使用替代畫面，離開後還原 shell。程式不會把書名設成終端標題。
 
-設定與進度放在 platformdirs 的使用者目錄；macOS 預設為 `~/Library/Application Support/dbb-reader/` 下的 `config.toml`、`state.json`。設定畫面會顯示實際設定檔位置。可使用 `--config /path/settings.toml`、`--state /path/state.json` 隔離測試資料。TOML 範例：
+設定與進度放在 platformdirs 的使用者目錄；macOS 預設為 `~/Library/Application Support/dbb-reader/` 下的 `config.toml`、`state.json`。設定畫面會顯示實際設定檔位置。可使用 `--config /path/settings.toml`、`--state /path/state.json` 隔離測試資料。設定開啟後直接聚焦書庫欄位；Tab 切換欄位，Ctrl+S 儲存並立即套用，Esc 取消未儲存變更。儲存／取消按鈕與錯誤訊息固定在捲動欄位之外。若急退鍵設為 Ctrl+S，急退優先，畫面改提示用 Tab 選取儲存後按 Enter，不顯示 Ctrl+S 儲存捷徑。TOML 範例：
 
 ```toml
 library = "/absolute/path/to/Books"
@@ -47,9 +47,11 @@ theme = "textual-dark"
 panic_key = "ctrl+d"
 ```
 
+`mode` 沿用既有 TOML 值，現在明確表示「空白鍵動作」：`page` 翻一頁，`scroll` 捲動一行；不影響方向鍵。
+
 佈景支援 `textual-dark`、`textual-light`、`nord`、`gruvbox`。離開鍵只接受 `ctrl+字母`，排除終端會解讀成 Backspace、Tab、Enter 的 h、i、j、m。無效設定以預設值啟動並顯示提示；個別損壞的進度紀錄會略過，其餘書籍紀錄保留。書籍、設定、進度、快取及環境檔不納入 Git。
 
-實驗性閱讀基礎：Enter 開啟 EPUB，← / → 翻頁，↑ / ↓ 一行移動（與模式無關），PageUp / PageDown 是額外翻頁捷徑。`n` / `p` 切換章節，`t` 開啟目錄，Esc / `b` 回書櫃。已有 CJK 排版、全書文字比例與每本書的章節／字元位置續讀。PDF、圖片、DRM、直排、複雜排版不支援；UTF-16 章節解碼與僅含片段的 TOC 連結修正，依目前範圍延後至閱讀器工作恢復。書籍改名或移動會建立新的續讀識別；多個同時執行的實例尚未合併進度寫入。
+實驗性閱讀基礎：Enter 開啟 EPUB，← / → 翻頁，↑ / ↓ 一行移動（與模式無關），PageUp / PageDown 是額外翻頁捷徑。空白鍵依設定翻一頁或捲動一行。`n` / `p` 切換章節，`t` 開啟目錄，Esc / Backspace / `b` 回書櫃；F2 / `s` 開啟同一份設定。底部常駐精簡提示，`q` 仍是離開整個程式。已有 CJK 排版、全書文字比例與每本書的章節／字元位置續讀。PDF、圖片、DRM、直排、複雜排版不支援；UTF-16 章節解碼與僅含片段的 TOC 連結修正，依目前範圍延後至閱讀器工作恢復。書籍改名或移動會建立新的續讀識別；多個同時執行的實例尚未合併進度寫入。
 
 驗證方式：`uv run pytest`，測試數以執行結果為準。測試涵蓋真實資料夾階層與空目錄、方向鍵與返回選取位置、搜尋範圍、輸入焦點、設定及全域離開、40–120 欄的進度可見性、繁簡搜尋、損壞狀態隔離，以及 POSIX PTY 的滑鼠／替代畫面／終端還原契約。原有 EPUB、排版、續讀及閱讀基礎測試保留。
 
