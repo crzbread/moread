@@ -143,7 +143,8 @@ def test_directory_scan_keeps_nested_and_empty_folders(make_epub, tmp_path):
 
 
 @pytest.mark.parametrize("title, query", [("閱讀", "阅读"), ("阅读", "閱讀"),
-                                         ("心理學", "心理学"), ("心理学", "心理學")])
+                                         ("心理學", "心理学"), ("心理学", "心理學"),
+                                         ("活著", "活着"), ("活着", "活著")])
 @pytest.mark.parametrize("field", ["title", "author"])
 def test_simplified_traditional_search_preserves_originals(tmp_path, title, query, field):
     from dbb_reader.library import Entry

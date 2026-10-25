@@ -67,7 +67,7 @@ def scan_library(root: Path, cancel: Event | None = None, report=None) -> list[E
 
 @lru_cache(maxsize=1)
 def _converter() -> OpenCC:
-    return OpenCC("t2s.json")
+    return OpenCC("tw2s.json")
 
 
 @lru_cache(maxsize=4096)
