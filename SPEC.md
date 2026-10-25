@@ -53,3 +53,24 @@ is search normalization only, not reader text conversion or semantic synonyms.
 
 Settings shortcut decision: advertise F2, using traditional terminal key sequences.
 Keep Tab-to-settings-button as fallback; do not advertise Ctrl+,.
+
+## Bookshelf spacing refinement
+
+User finds typography crowded and requests reference to other terminal tools.
+Use Yazi (https://github.com/sxyazi/yazi) and superfile
+(https://superfile.dev/overview/) as layout references: clearer whitespace,
+separated path/search/list/help regions, calmer secondary metadata and comfortable
+rows, responsive compact layout for short/narrow terminals. Preserve folder-first
+navigation, arrows, search normalization and panic behavior. Font itself belongs
+to the terminal; do not change terminal settings. No reader feature expansion.
+
+Navigation correction: Right must ONLY enter directories, never open a book.
+Enter opens a selected directory or book. Left returns to the parent directory
+on the shelf. Reading keeps Left/Right paging and Escape returning to shelf.
+Show contextual hints so repeatedly pressing Right cannot accidentally enter
+reading. Add regression coverage for EPUB and PDF right-arrow no-op.
+
+Additional controls: q exits the application outside editable inputs. In search
+and settings text inputs q remains ordinary text; Ctrl+D remains global panic.
+Translate bottom help/footer descriptions throughout existing screens to
+Traditional Chinese, including reading and loading, without expanding features.

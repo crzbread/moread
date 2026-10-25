@@ -57,7 +57,8 @@ async def test_global_panic_every_screen(make_epub, tmp_path, screen):
         assert app._exit
 
 
-async def test_panic_loading_and_cancel_does_not_wait(make_epub, tmp_path, monkeypatch):
+@pytest.mark.parametrize("exit_key", ["ctrl+d", "q"])
+async def test_panic_loading_and_cancel_does_not_wait(make_epub, tmp_path, monkeypatch, exit_key):
     make_epub()
     started, released = Event(), Event()
     def slow(path, cancel, report):
@@ -73,7 +74,7 @@ async def test_panic_loading_and_cancel_does_not_wait(make_epub, tmp_path, monke
         await pilot.press("enter")
         await until(pilot, lambda: isinstance(app.screen, Loading) and started.is_set())
         start = time.monotonic()
-        await pilot.press("ctrl+d")
+        await pilot.press(exit_key)
         await pilot.pause(.02)
         assert app._exit and time.monotonic() - start < 1
         assert released.wait(1)
@@ -314,3 +315,75 @@ async def test_global_panic_during_directory_scan(tmp_path, monkeypatch):
         await pilot.press("/", "ctrl+d")
         await pilot.pause(.02)
         assert app._exit
+
+
+@pytest.mark.parametrize("format", ["epub", "pdf"])
+async def test_right_never_opens_books_enter_still_opens(make_epub, tmp_path, format):
+    if format == "epub":
+        make_epub()
+    else:
+        (tmp_path / "manual.pdf").write_bytes(b"unsupported")
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await ready(app, pilot)
+        shelf = app.screen
+        await pilot.press("right", "right", "right")
+        assert app.screen is shelf and "load" not in app.jobs
+        await pilot.press("enter")
+        if format == "epub":
+            await until(pilot, lambda: isinstance(app.screen, Reading))
+            await pilot.press("escape")
+        assert app.screen is shelf
+
+
+@pytest.mark.parametrize("screen", ["shelf", "reading", "toc", "settings-button"])
+async def test_q_exits_outside_inputs(make_epub, tmp_path, screen):
+    make_epub()
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await ready(app, pilot)
+        if screen in ("reading", "toc"):
+            await pilot.press("enter")
+            await until(pilot, lambda: isinstance(app.screen, Reading))
+            if screen == "toc":
+                await pilot.press("t")
+        elif screen == "settings-button":
+            await pilot.press("f2")
+            app.screen.query_one("#save").focus()
+        await pilot.press("q")
+        await pilot.pause(.02)
+        assert app._exit
+
+
+async def test_q_is_text_in_search_and_settings_and_safe_in_dropdown(tmp_path):
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await ready(app, pilot)
+        await pilot.press("/", "q")
+        assert app.screen.query_one(Input).value == "q" and not app._exit
+        await pilot.press("f2")
+        field = app.screen.query_one("#library", Input)
+        field.focus()
+        await pilot.pause()
+        await pilot.press("q")
+        assert field.value.endswith("q") and not app._exit
+        select = app.screen.query_one("#theme", Select)
+        select.focus()
+        await pilot.pause()
+        await pilot.press("q")
+        assert not app._exit
+        await pilot.press("enter")
+        assert select.expanded
+        await pilot.press("q")
+        assert select.expanded and not app._exit
+        await pilot.press("ctrl+d")
+        await pilot.pause(.02)
+        assert app._exit
+
+
+def test_footer_descriptions_are_traditional_chinese():
+    from textual.binding import Binding
+    for screen in (Shelf, Loading, Contents, Reading, Settings, ReaderApp):
+        for binding in screen.BINDINGS:
+            description = binding.description if isinstance(binding, Binding) else binding[2]
+            assert any('\u4e00' <= char <= '\u9fff' for char in description), description

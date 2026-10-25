@@ -21,11 +21,11 @@ from .state import State
 
 class ShelfTable(DataTable):
     """Directory keys apply only to the listing, never to editable inputs."""
-    BINDINGS = [Binding("right", "open", "開啟", show=False),
+    BINDINGS = [Binding("right", "enter_directory", "進入資料夾", show=False),
                 Binding("left,backspace", "parent", "上層", show=False)]
 
-    def action_open(self):
-        self.screen.action_open()
+    def action_enter_directory(self):
+        self.screen.action_open(directories_only=True)
 
     def action_parent(self):
         self.screen.action_parent()
@@ -160,8 +160,10 @@ class Shelf(Screen):
         if self.app.focused is self.query_one("#search", Input):
             help_text = "←→ 游標 · Backspace 刪字 · Enter 回清單 · Esc 清除／上層"
         else:
-            help_text = "↑↓ 選擇 · → / Enter 開啟 · ← / Backspace 上層 · / 搜尋"
-        help_text += f"\nEsc 清除搜尋再回上層 · r 最近閱讀 · F5 重新整理 · F2 設定 · {self.reader.config.panic_key.replace('ctrl+', 'Ctrl+').upper().replace('CTRL', 'Ctrl')} 離開"
+            help_text = "↑↓ 選擇 · → 進資料夾 · Enter 開啟 · ← / Backspace 上層 · / 搜尋"
+        panic = self.reader.config.panic_key.replace("ctrl+", "Ctrl+")
+        exit_hint = panic if isinstance(self.app.focused, Input) else f"q / {panic}"
+        help_text += f"\nEsc 清除搜尋再回上層 · r 最近閱讀 · F5 重新整理 · F2 設定 · {exit_hint} 離開"
         self.query_one("#shelf-help", Static).update(Text(help_text))
 
     @on(Input.Changed, "#search")
@@ -177,7 +179,7 @@ class Shelf(Screen):
     def open_selected(self):
         self.action_open()
 
-    def action_open(self):
+    def action_open(self, directories_only=False):
         selected = self.selected_key()
         if selected == "__parent__":
             self.action_parent()
@@ -187,6 +189,8 @@ class Shelf(Screen):
             return
         if entry.is_directory:
             self.navigate(entry.path)
+        elif directories_only:
+            return
         elif not entry.supported:
             self.notify("此版本不支援 PDF 閱讀，請選擇 EPUB。", severity="warning")
         elif entry.error:
@@ -276,7 +280,7 @@ class Settings(Screen):
 
 
 class Loading(Screen):
-    BINDINGS = [("escape", "cancel", "Cancel opening")]
+    BINDINGS = [("escape", "cancel", "取消開啟")]
 
     def compose(self):
         yield Static("Opening EPUB…", classes="heading")
@@ -289,7 +293,7 @@ class Loading(Screen):
 
 
 class Contents(Screen):
-    BINDINGS = [("escape", "cancel", "Back")]
+    BINDINGS = [("escape", "cancel", "返回")]
 
     def __init__(self, reading: "Reading"):
         super().__init__()
@@ -322,13 +326,13 @@ class Contents(Screen):
 
 class Reading(Screen):
     BINDINGS = [
-        ("space,pagedown,right", "move(1, True)", "Next page"),
-        ("pageup,left", "move(-1, True)", "Previous page"),
-        ("down,j", "move(1, False)", "Down"), ("up,k", "move(-1, False)", "Up"),
-        ("n", "chapter(1)", "Next chapter"), ("p", "chapter(-1)", "Previous chapter"),
-        ("t", "toc", "Contents"), ("s", "settings", "Settings"),
-        ("home", "start", "Chapter start"), ("end", "end", "Chapter end"),
-        ("escape,b", "back", "Bookshelf"),
+        ("space,pagedown,right", "move(1, True)", "下一頁"),
+        ("pageup,left", "move(-1, True)", "上一頁"),
+        ("down,j", "move(1, False)", "下一行"), ("up,k", "move(-1, False)", "上一行"),
+        ("n", "chapter(1)", "下一章"), ("p", "chapter(-1)", "上一章"),
+        ("t", "toc", "目錄"), ("s", "settings", "設定"),
+        ("home", "start", "章節開頭"), ("end", "end", "章節結尾"),
+        ("escape,b", "back", "書櫃"),
     ]
 
     def __init__(self, entry: Entry, book: Book):
@@ -450,7 +454,8 @@ class ReaderApp(App):
     ENABLE_COMMAND_PALETTE = False
     SUB_TITLE = ""
     BINDINGS = [Binding("ctrl+d", "panic", "離開", priority=True, id="panic"),
-                Binding("ctrl+c", "panic", "Exit", show=False, priority=True)]
+                Binding("ctrl+c", "panic", "離開", show=False, priority=True),
+                Binding("q", "quit_from_q", "離開", priority=False)]
     CSS = """
     Screen { layout: vertical; }
     .heading { height: 2; text-style: bold; padding: 0 1; }
@@ -575,6 +580,22 @@ class ReaderApp(App):
             cancel.set()
         self.jobs.clear()
         self.exit()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "quit_from_q":
+            # Non-priority binding plus an explicit menu guard: dropdown type-ahead
+            # may leave letters unhandled, but must never turn them into an exit.
+            if self.focused is not None and any(
+                isinstance(widget, (Input, Select)) for widget in self.focused.ancestors_with_self
+            ):
+                return False
+            if any(select.expanded for select in self.screen.query(Select)):
+                return False
+        return super().check_action(action, parameters)
+
+    def action_quit_from_q(self):
+        if self.check_action("quit_from_q", ()):
+            self.action_panic()
 
     def on_unmount(self):
         for cancel in self.jobs.values():
