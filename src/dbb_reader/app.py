@@ -557,8 +557,8 @@ class ReaderApp(App):
     .buttons Button { margin-right: 2; }
     #reading-area { height: 1fr; align-horizontal: center; overflow: hidden; }
     #text { height: auto; }
-    #progress { height: 1; }
-    #reading-help { height: 2; padding: 0 1; }
+    #progress { height: 1; margin-top: 1; }
+    #reading-help { height: 2; margin: 1 0; padding: 0 1; }
     Reading.narrow #reading-help { height: 3; }
     """
 
