@@ -41,7 +41,7 @@ class Shelf(Screen):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="shelf-header"):
-            yield Static(Text.assemble(("書櫃", "bold"), ("  dbb-reader", "dim")), id="shelf-title")
+            yield Static(Text.assemble(("書櫃", "bold"), ("  MoRead", "dim")), id="shelf-title")
             yield Button("設定 F2", id="shelf-settings")
         yield Static("", id="shelf-path")
         with Horizontal(id="shelf-search"):
@@ -520,7 +520,7 @@ class Reading(Screen):
 
 
 class ReaderApp(App):
-    TITLE = "dbb-reader"
+    TITLE = "MoRead"
     ENABLE_COMMAND_PALETTE = False
     SUB_TITLE = ""
     BINDINGS = [Binding("ctrl+d", "panic", "離開", priority=True, id="panic"),

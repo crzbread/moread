@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-dbb-reader = "dbb_reader.__main__:main"
+moread = "dbb_reader.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24"]

@@ -8,16 +8,16 @@ MoRead 結合「墨」的音節 **Mo** 與英文 **Read**，也呼應 **more rea
 
 需要 Python 3.11+ 與支援 UTF-8 的終端；建議至少 40 欄、18 列。
 
-專案名稱為 MoRead；目前套件、啟動指令與設定目錄仍沿用 `dbb-reader`，請使用以下指令。
+使用 `moread` 啟動。為保留既有設定與閱讀進度，資料目錄仍沿用 `dbb-reader`。
 
 ```sh
 uv sync
-uv run dbb-reader
+uv run moread
 # 也可以指定其他書庫
-uv run dbb-reader --library /path/to/Books
+uv run moread --library /path/to/Books
 ```
 
-不使用 uv 時，可在虛擬環境執行 `python -m pip install .`，再執行 `dbb-reader`。
+不使用 uv 時，可在虛擬環境執行 `python -m pip install .`，再執行 `moread`。
 預設書庫為 `~/Documents/Self/Books`，與套件安裝位置、啟動目錄無關。可在介面設定或 TOML 中修改。
 
 書櫃從書庫根目錄開始，每次只顯示目前資料夾的直接子項目；資料夾在前，書籍在後。EPUB 優先顯示內含書名及作者；PDF 保留列出並標示不支援。長標題會截短，進度欄固定保留，不需水平捲動。符號連結不列入。
