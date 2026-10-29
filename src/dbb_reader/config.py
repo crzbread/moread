@@ -10,7 +10,7 @@ import tomllib
 from platformdirs import user_config_path, user_state_path
 
 
-DEFAULT_LIBRARY = Path.home() / "Documents" / "Self" / "Books"
+DEFAULT_LIBRARY = Path.home() / "Documents" / "Books"
 
 
 def atomic_write(path: Path, content: str) -> None:

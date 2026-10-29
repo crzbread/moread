@@ -96,7 +96,7 @@ def test_cancel_and_malformed(make_epub, tmp_path):
 def test_default_library_is_installation_independent(monkeypatch, tmp_path):
     from dbb_reader.config import DEFAULT_LIBRARY
     monkeypatch.chdir(tmp_path)
-    assert Path(Config().library) == DEFAULT_LIBRARY == Path.home() / "Documents" / "Self" / "Books"
+    assert Path(Config().library) == DEFAULT_LIBRARY == Path.home() / "Documents" / "Books"
 
 
 def test_reject_backspace_panic_alias(tmp_path):
