@@ -1,5 +1,6 @@
 """Keyboard-only Textual interface. Disk/EPUB work never runs in the UI loop."""
 from pathlib import Path
+from datetime import datetime
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
 from typing import Callable
@@ -15,7 +16,7 @@ from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Sta
 from .config import Config, config_path, save_config
 from .epub import Book, Cancelled, load_book
 from .layout import line_at, wrap
-from .library import Entry, filter_entries, scan_directory
+from .library import Entry, filter_entries, scan_directory, scan_library, normalize_search
 from .state import State
 
 
@@ -35,7 +36,6 @@ class Shelf(Screen):
     BINDINGS = [Binding("/", "search", "搜尋"),
                 Binding("f2", "settings", "設定", priority=True),
                 Binding("s", "settings", "設定", show=False),
-                Binding("r", "recent", "最近閱讀", show=False),
                 Binding("f5", "reload", "重新整理", show=False),
                 Binding("escape", "escape", "清除／上層", priority=True, show=False)]
 
@@ -52,7 +52,7 @@ class Shelf(Screen):
         yield Static("", id="shelf-help")
 
     def on_mount(self):
-        self.recent_first = False
+        self.in_recent = False
         self.entries: list[Entry] = []
         self.filtered_entries: list[Entry] = []
         self.error = ""
@@ -77,8 +77,9 @@ class Shelf(Screen):
     def navigate(self, directory: Path, select: str | None = None):
         if not directory.is_relative_to(self.root):
             return
-        if selected := self.selected_key():
+        if not self.in_recent and (selected := self.selected_key()):
             self.selection_history[self.current_directory] = selected
+        self.in_recent = False
         self.current_directory = directory
         self.entries = []
         self.preferred_key = select or self.selection_history.get(directory) or "__default__"
@@ -98,10 +99,10 @@ class Shelf(Screen):
         selected = self.preferred_key or self.selected_key()
         query = self.query_one("#search", Input).value
         self.filtered_entries = filter_entries(self.entries, query)
-        self.filtered_entries.sort(key=lambda entry: (entry.title.casefold(), str(entry.path)))
-        if self.recent_first:
+        if self.in_recent:
             self.filtered_entries.sort(key=lambda entry: self.reader.state.get(entry.path).updated, reverse=True)
-        self.filtered_entries.sort(key=lambda entry: not entry.is_directory)
+        else:
+            self.filtered_entries.sort(key=lambda entry: (not entry.is_directory, entry.title.casefold(), str(entry.path)))
         # Explicit widths reserve progress and type. Long CJK titles are truncated, never
         # allowed to push these columns into a horizontal scrolling region.
         table.clear(columns=True)
@@ -118,10 +119,14 @@ class Shelf(Screen):
         table.add_column("進度", width=7)
         table.add_column("類型", width=type_width)
         keys = []
-        if self.current_directory != self.root:
+        if self.current_directory != self.root or self.in_recent:
             table.add_row(Text("← .. 上層資料夾", style="dim"), "", "", key="__parent__",
                           height=2 if self.roomy_rows else 1)
             keys.append("__parent__")
+        if not self.in_recent and self.current_directory == self.root and (not query or normalize_search(query) in normalize_search("最近閱讀")):
+            table.add_row(Text("▸ 最近閱讀", style="bold"), "", "", key="__recent__",
+                          height=2 if self.roomy_rows else 1)
+            keys.append("__recent__")
         for entry in self.filtered_entries:
             position = self.reader.state.get(entry.path)
             name = Text(("▸ " if entry.is_directory else "") + entry.title,
@@ -130,6 +135,13 @@ class Shelf(Screen):
                 name.append("\n")
                 if entry.author:
                     name.append("  " + entry.author, style="not bold dim")
+                if self.in_recent:
+                    name.append("  " + (entry.category if entry.category != "Uncategorized" else "書庫根目錄"), style="not bold dim")
+                    try:
+                        timestamp = datetime.fromisoformat(position.updated).astimezone().strftime("%Y-%m-%d %H:%M")
+                        name.append(" · " + timestamp, style="not bold dim")
+                    except ValueError:
+                        pass
             elif entry.author:
                 name.append("  · " + entry.author, style="not bold dim")
             kind = "" if entry.is_directory else ("損壞" if entry.error else
@@ -139,7 +151,7 @@ class Shelf(Screen):
             row_height = (2 if entry.is_directory else (3 if self.size.height >= 28 else 2)) if self.roomy_rows else 1
             table.add_row(name, progress, Text(kind, style="dim"), key=key, height=row_height)
             keys.append(key)
-        default_index = 1 if self.current_directory != self.root and self.filtered_entries else 0
+        default_index = 1 if self.filtered_entries and (self.current_directory != self.root or self.in_recent or "__recent__" in keys) else 0
         if selected in keys:
             table.move_cursor(row=keys.index(selected))
             self.preferred_key = None
@@ -149,7 +161,9 @@ class Shelf(Screen):
                 self.preferred_key = None
         relative = self.current_directory.relative_to(self.root)
         breadcrumb = Text(self.root.name, style="dim", no_wrap=True, overflow="ellipsis")
-        if relative.parts:
+        if self.in_recent:
+            breadcrumb.append(" / 最近閱讀", style="bold")
+        elif relative.parts:
             for index, part in enumerate(relative.parts):
                 breadcrumb.append(" / ", style="dim")
                 breadcrumb.append(part, style="bold" if index == len(relative.parts) - 1 else "dim")
@@ -160,11 +174,9 @@ class Shelf(Screen):
         book_count = len(self.filtered_entries) - folder_count
         message = self.error or ("讀取中… " if self.scanning else "") + f"{folder_count} 個資料夾 · {book_count} 本書"
         if query:
-            message += " · 此資料夾的搜尋結果"
+            message += " · 最近閱讀的搜尋結果" if self.in_recent else " · 此資料夾的搜尋結果"
         elif not self.entries and not self.scanning and not self.error:
-            message += " · 此資料夾是空的"
-        if self.recent_first:
-            message += " · 最近閱讀"
+            message += " · 尚無閱讀紀錄" if self.in_recent else " · 此資料夾是空的"
         self.query_one("#shelf-status", Static).update(Text(message, no_wrap=True, overflow="ellipsis"))
         self.update_help()
 
@@ -186,7 +198,8 @@ class Shelf(Screen):
         panic = self.reader.config.panic_key.upper().replace("CTRL", "Ctrl")
         if self.app.focused is self.query_one("#search", Input):
             first = "Enter 回清單  Esc 清除／上層"
-            second = f"←→ 游標  {panic} 離開" if compact else f"僅搜尋此資料夾（不含子資料夾）  ·  ←→ 游標  Backspace 刪字  ·  {panic} 離開"
+            scope = "搜尋最近閱讀" if self.in_recent else "僅搜尋此資料夾（不含子資料夾）"
+            second = f"←→ 游標  {panic} 離開" if compact else f"{scope}  ·  ←→ 游標  Backspace 刪字  ·  {panic} 離開"
         else:
             entry = next((entry for entry in self.entries if str(entry.path) == self.selected_key()), None)
             if entry is not None and not entry.is_directory:
@@ -197,7 +210,7 @@ class Shelf(Screen):
             second = f"← 上層  / 搜尋  q/{panic} 離開"
             if not compact:
                 first += "  ·  ← / Backspace 上層  ·  / 搜尋"
-                second = f"Esc 清除／上層  ·  r 最近閱讀  ·  F5 重新整理  ·  q / {panic} 離開"
+                second = f"Esc 清除／上層  ·  F5 重新整理  ·  q / {panic} 離開"
         help_text = Text(first + "\n")
         help_text.append(second, style="dim")
         self.query_one("#shelf-help", Static).update(help_text)
@@ -220,6 +233,15 @@ class Shelf(Screen):
         if selected == "__parent__":
             self.action_parent()
             return
+        if selected == "__recent__":
+            self.in_recent = True
+            self.entries = []
+            self.preferred_key = "__default__"
+            self.scanning, self.error = True, ""
+            self.query_one("#search", Input).value = ""
+            self.refresh_books()
+            self.reader.start_scan(self)
+            return
         entry = next((entry for entry in self.entries if str(entry.path) == selected), None)
         if entry is None:
             return
@@ -235,7 +257,9 @@ class Shelf(Screen):
             self.reader.open_entry(entry)
 
     def action_parent(self):
-        if self.current_directory != self.root:
+        if self.in_recent:
+            self.navigate(self.root, select="__recent__")
+        elif self.current_directory != self.root:
             self.navigate(self.current_directory.parent, select=str(self.current_directory))
 
     def action_escape(self):
@@ -253,10 +277,6 @@ class Shelf(Screen):
     @on(Button.Pressed, "#shelf-settings")
     def action_settings(self):
         self.reader.push_screen(Settings())
-
-    def action_recent(self):
-        self.recent_first = not self.recent_first
-        self.refresh_books()
 
     def action_reload(self):
         self.scanning = True
@@ -637,7 +657,10 @@ class ReaderApp(App):
 
     def start_scan(self, shelf: Shelf):
         root, directory = shelf.root, shelf.current_directory
-        self.background("scan", lambda cancel, report: scan_directory(root, directory, cancel, report),
+        recent = shelf.in_recent
+        book_ids = set(self.state.positions)
+        self.background("scan", lambda cancel, report: scan_library(root, cancel, report, book_ids) if recent
+                        else scan_directory(root, directory, cancel, report),
                         lambda entries, error: shelf.set_entries(entries or [], complete=True, error=error or ""),
                         lambda entries: shelf.set_entries(entries))
 

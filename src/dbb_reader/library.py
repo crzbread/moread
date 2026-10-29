@@ -10,6 +10,7 @@ from threading import Event
 from zipfile import ZipFile
 
 from .epub import clean, package, Cancelled
+from .state import book_id
 
 
 @dataclass
@@ -26,7 +27,7 @@ class Entry:
         return not self.is_directory and self.path.suffix.lower() == ".epub"
 
 
-def scan_library(root: Path, cancel: Event | None = None, report=None) -> list[Entry]:
+def scan_library(root: Path, cancel: Event | None = None, report=None, book_ids: set[str] | None = None) -> list[Entry]:
     root = root.expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"Library folder does not exist: {root}")
@@ -35,11 +36,14 @@ def scan_library(root: Path, cancel: Event | None = None, report=None) -> list[E
     def onerror(exc):
         errors.append(str(exc))
     for directory, dirs, files in os.walk(root, followlinks=False, onerror=onerror):
+        dirs[:] = [name for name in dirs if not (Path(directory) / name).is_symlink()]
         dirs.sort(key=str.casefold)
         for filename in sorted(files, key=str.casefold):
             if cancel is not None and cancel.is_set():
                 raise Cancelled()
             path = Path(directory) / filename
+            if path.is_symlink() or (book_ids is not None and book_id(path) not in book_ids):
+                continue
             if path.suffix.lower() not in (".epub", ".pdf"):
                 continue
             # Do not follow file symlinks out of the configured library.

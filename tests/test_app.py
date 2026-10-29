@@ -31,6 +31,32 @@ async def ready(app, pilot):
     await until(pilot, lambda: isinstance(app.screen, Shelf) and not app.screen.scanning)
 
 
+async def test_recent_reading_collects_books_across_directories(make_epub, tmp_path):
+    (tmp_path / "一").mkdir()
+    (tmp_path / "二").mkdir()
+    first = make_epub("一/first.epub")
+    second = make_epub("二/second.epub")
+    make_epub("unread.epub")
+    app = make_app(tmp_path)
+    app.state.save(first, 0, 0, .2)
+    app.state.save(second, 0, 0, .7)
+    async with app.run_test(size=(80, 28)) as pilot:
+        await ready(app, pilot)
+        shelf = app.screen
+        table = shelf.query_one(DataTable)
+        assert table.coordinate_to_cell_key((0, 0)).row_key.value == "__recent__"
+        table.move_cursor(row=0)
+        await pilot.press("right")
+        await until(pilot, lambda: not shelf.scanning)
+        assert [entry.path for entry in shelf.filtered_entries] == [second, first]
+        assert [entry.category for entry in shelf.filtered_entries] == ["二", "一"]
+        await pilot.press("enter")
+        await until(pilot, lambda: isinstance(app.screen, Reading))
+        await pilot.press("escape", "left")
+        await until(pilot, lambda: not shelf.scanning)
+        assert not shelf.in_recent and shelf.selected_key() == "__recent__"
+
+
 @pytest.mark.parametrize("screen", ["shelf", "search", "settings", "theme-select", "reading", "toc"])
 async def test_global_panic_every_screen(make_epub, tmp_path, screen):
     make_epub()
@@ -89,7 +115,7 @@ async def test_folder_search_pdf_recovery_and_recent(make_epub, tmp_path):
     async with app.run_test() as pilot:
         await ready(app, pilot)
         shelf = app.screen
-        assert shelf.query_one(DataTable).row_count == 2
+        assert shelf.query_one(DataTable).row_count == 3
         assert shelf.filtered_entries[0].is_directory
         await pilot.press("right")
         await until(pilot, lambda: not shelf.scanning)
@@ -296,11 +322,11 @@ async def test_progress_visible_without_horizontal_overflow(make_epub, tmp_path,
         await ready(app, pilot)
         table = app.screen.query_one(DataTable)
         assert table.virtual_size.width <= table.content_size.width
-        assert table.get_cell_at((0, 1)) == "37.5%"
+        assert table.get_cell_at((1, 1)) == "37.5%"
         await pilot.resize_terminal(max(40, width - 20), 24)
         await pilot.pause()
         assert table.virtual_size.width <= table.content_size.width
-        assert table.get_cell_at((0, 1)) == "37.5%"
+        assert table.get_cell_at((1, 1)) == "37.5%"
 
 
 async def test_global_panic_during_directory_scan(tmp_path, monkeypatch):
