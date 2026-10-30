@@ -292,7 +292,7 @@ class Settings(Screen):
         config = self.app.config
         yield Static("設定 · Tab 切換欄位", classes="heading")
         with VerticalScroll(id="settings-fields"):
-            yield Label("書庫資料夾")
+            yield Label("書庫資料夾（Enter 儲存）")
             yield Input(config.library, id="library")
             yield Label("空白鍵動作")
             yield Select([("翻一頁", "page"), ("捲動一行", "scroll")], value=config.mode, allow_blank=False, id="mode")
@@ -308,15 +308,15 @@ class Settings(Screen):
         with Horizontal(classes="buttons", id="settings-actions"):
             yield Button("儲存", id="save", variant="primary")
             yield Button("取消", id="cancel")
-        yield Static("Ctrl+S 儲存  Esc 取消\nTab 切欄位", id="settings-help")
+        yield Static("", id="settings-help")
 
     def on_mount(self):
         self.query_one("#library", Input).focus()
         panic = self.app.config.panic_key.upper().replace("CTRL", "Ctrl")
         if self.app.config.panic_key == "ctrl+s":
-            hints = "Tab 選儲存後 Enter  Esc 取消\nCtrl+S 急退（不儲存）"
+            hints = "Enter 確認  Tab 切欄位  Esc 取消\n可點儲存按鈕 · Ctrl+S 急退"
         else:
-            hints = f"Ctrl+S 儲存  Esc 取消\nTab 切欄位  {panic} 急退"
+            hints = f"Enter 確認  Tab 切欄位  Esc 取消\n可點儲存 · Ctrl+S 儲存 · {panic} 急退"
         self.query_one("#settings-help", Static).update(Text(
             hints))
 
@@ -324,6 +324,10 @@ class Settings(Screen):
         if action == "save" and self.app.config.panic_key == "ctrl+s":
             return False  # The app's priority panic binding always wins; the button still saves.
         return super().check_action(action, parameters)
+
+    @on(Input.Submitted, "#library")
+    def library_submitted(self):
+        self.action_save()
 
     @on(Button.Pressed, "#save")
     def action_save(self):

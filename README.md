@@ -48,7 +48,7 @@ uv run moread --library /path/to/Books
 
 ## 設定與閱讀進度
 
-按 `F2` 可調整書庫位置、閱讀寬度、主題、空白鍵動作及立即離開鍵。設定畫面使用 `Ctrl+S` 儲存、Esc 取消；若立即離開鍵設為 `Ctrl+S`，請用 Tab 選取儲存按鈕後按 Enter。
+按 `F2` 可調整書庫位置、閱讀寬度、主題、空白鍵動作及立即離開鍵。書庫路徑輸入完按 Enter 即可儲存，也可以滑鼠點「儲存」，或用 Tab 選取按鈕後按 Enter。`Ctrl+S` 也能儲存、Esc 取消；若立即離開鍵設為 `Ctrl+S`，該快捷鍵會立即離開而不儲存。
 
 設定和進度儲存在使用者目錄，macOS 預設位於 `~/Library/Application Support/dbb-reader/`。書籍本身不會被修改。書籍移動或改名後會被視為新書；同時執行多個 MoRead 實例時，進度不會自動合併。
 

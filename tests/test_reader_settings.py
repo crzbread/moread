@@ -153,3 +153,30 @@ async def test_ctrl_s_panic_collision_keeps_button_save_and_honest_hints(make_ep
         await pilot.pause()
         assert app._exit
         assert load_config(app.config_file)[0].reading_width == 26
+
+
+@pytest.mark.parametrize("route", ["enter", "click", "tab"])
+async def test_library_change_saves_without_ctrl_s(tmp_path, route):
+    library = tmp_path / "new-library"
+    library.mkdir()
+    app = make_app(tmp_path)
+    async with app.run_test(size=(40, 18)) as pilot:
+        await ready(app, pilot)
+        await pilot.press("f2")
+        await until(pilot, lambda: isinstance(app.screen, Settings))
+        app.screen.query_one("#library", Input).value = str(library)
+        if route == "enter":
+            await pilot.press("enter")
+        elif route == "click":
+            await pilot.click("#save")
+        else:
+            for _ in range(10):
+                if app.focused.id == "save":
+                    break
+                await pilot.press("tab")
+            assert app.focused.id == "save"
+            await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, Shelf)
+        assert app.config.library == str(library)
+        assert load_config(app.config_file)[0].library == str(library)
